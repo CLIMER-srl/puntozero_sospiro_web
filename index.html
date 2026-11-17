@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>SOSPIRO</title>
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--fg:#1a1c20;--mut:#6b7280;--line:#d8dbe0;--acc:#2563eb;--ok:#16a34a;--bad:#dc2626;--plot:#101317;--grid:#2a2f37}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#181b21;--fg:#e6e8ec;--mut:#9aa1ad;--line:#2a2f37;--acc:#4f8cff;--ok:#22c55e;--bad:#ef4444}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.35 -apple-system,system-ui,Segoe UI,Roboto,sans-serif;-webkit-text-size-adjust:100%}
+body{padding:env(safe-area-inset-top) 12px env(safe-area-inset-bottom) 12px;max-width:900px;margin:0 auto}
+header{position:sticky;top:0;background:var(--bg);padding:8px 0;z-index:5;border-bottom:1px solid var(--line)}
+.row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+button,select,input{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+button{cursor:pointer;min-height:38px}
+button.pri{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+button.stop{background:var(--bad);border-color:var(--bad);color:#fff}
+input[type=number]{width:84px}
+input[type=checkbox]{width:20px;height:20px;padding:0;margin:0 6px 0 0;vertical-align:middle}
+.led{padding:2px 8px;border-radius:6px;font-size:12px;color:#fff;background:#888}
+.led.ok{background:var(--ok)}.led.ko{background:var(--bad)}
+nav{display:flex;gap:4px;margin-top:8px}
+nav button{flex:1;padding:6px 4px}
+nav button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.tab{display:none;padding-top:10px}.tab.on{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px}
+.card h3{margin:0 0 6px;font-size:13px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
+.kv{display:grid;grid-template-columns:1fr auto;gap:2px 10px}
+.kv span:nth-child(odd){color:var(--mut)}.kv span:nth-child(even){font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
+.big{font-size:34px;font-weight:700;text-align:center;font-variant-numeric:tabular-nums}
+.big small{display:block;font-size:12px;color:var(--mut);font-weight:400}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.mot{text-align:center;padding:6px;border-radius:8px;color:#fff;font-weight:600;margin-bottom:6px;background:#888}
+.plotbox{position:relative;margin-bottom:10px}
+.plotbox canvas{width:100%;height:190px;display:block;background:var(--plot);border-radius:12px}
+.plotbox button{position:absolute;top:6px;right:6px;min-height:28px;padding:2px 8px;background:#0008;color:#fff;border-color:#fff4}
+#log{font:11px/1.3 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all;max-height:60vh;overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px}
+.ctl{display:flex;gap:8px;align-items:center;justify-content:space-between;margin:6px 0;flex-wrap:wrap}
+.ctl label{flex:1 1 140px}
+.mut{color:var(--mut);font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <div class="row">
+    <button id="btnConn" class="pri">Connetti</button>
+    <span id="fw" class="mut">FW: -</span>
+    <span id="clock" class="mut">Ora: -</span>
+  </div>
+  <div class="row" id="leds" style="margin-top:6px"></div>
+  <nav id="nav"></nav>
+</header>
+
+<section class="tab on" id="tab-dati">
+  <div class="two">
+    <div class="card"><div class="big" id="bigBpm">--<small>BPM</small></div></div>
+    <div class="card"><div class="big" id="bigSpo2">--<small>SpO2 % (indicativa)</small></div></div>
+  </div>
+  <div class="card"><h3>Valori</h3><div class="kv" id="g-vals"></div></div>
+  <div class="card"><h3>Bio (indicativo, non calibrato)</h3><div class="mot" id="motion">Movimento: -</div><div class="kv" id="g-bio"></div></div>
+  <div class="card"><h3>Movimento / ambiente</h3><div class="kv" id="g-ext"></div></div>
+  <div class="card"><h3>Alimentazioni</h3><div class="kv" id="g-pw"></div></div>
+</section>
+
+<section class="tab" id="tab-graf"><div id="plots"></div></section>
+
+<section class="tab" id="tab-cmd">
+  <div class="card"><h3>Registrazione</h3>
+    <div class="row"><button id="btnRec">Registra CSV</button><span class="mut" id="recInfo"></span></div>
+    <div class="mut" style="margin-top:6px">Il file viene scaricato alla fine. Il LED rosso della scheda lampeggia durante la registrazione.</div>
+  </div>
+  <div class="card"><h3>Display OLED</h3>
+    <div class="row">
+      <button id="pgPrev">&#9664;</button><select id="pgSel" style="flex:1"></select><button id="pgNext">&#9654;</button>
+    </div>
+    <div class="ctl"><label><input type="checkbox" id="autoChk">Rotazione automatica</label><span><input type="number" id="autoMs" value="4000" min="500" step="500"> ms</span></div>
+  </div>
+  <div class="card"><h3>Sensori</h3>
+    <div class="ctl"><label><input type="checkbox" id="ppgChk">Stream PPG</label><span><input type="number" id="ppgRate" value="10" min="1" max="100"> sps</span></div>
+    <div class="ctl"><label><input type="checkbox" id="agcChk" checked>LED PPG automatico</label></div>
+    <div class="ctl"><span>Corrente LED PPG</span><span><input type="number" id="ledVal" value="31" min="0" max="255"> <button id="ledSet">Imposta</button></span></div>
+    <div class="ctl"><label><input type="checkbox" id="micChk">Microfono</label><label><input type="checkbox" id="heatChk">Riscaldatore SHT31 (30 s)</label></div>
+    <div class="ctl"><span>Soglia movimento [g]</span><span><input type="number" id="motVal" value="0.10" min="0.01" max="2" step="0.01"> <button id="motSet">Imposta</button></span></div>
+    <div class="ctl"><span>Periodo telemetria [ms]</span><span><input type="number" id="rateVal" value="1000" min="100" max="60000" step="100"> <button id="rateSet">Imposta</button></span></div>
+    <div class="ctl"><button id="stepsReset">Azzera passi e cadute</button></div>
+  </div>
+  <div class="card"><h3>Dispositivo</h3>
+    <div class="row"><button id="btnStatus">Status</button><button id="btnI2c">Scansione I2C</button><button id="btnSync">Sincronizza ora</button></div>
+  </div>
+</section>
+
+<section class="tab" id="tab-log"><div class="row" style="margin-bottom:6px"><button id="logClear">Svuota log</button></div><div id="log"></div></section>
+
+<script>
+'use strict';
+const NUS = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const RX  = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';   // PC -> device
+const TX  = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';   // device -> PC (notify)
+const $ = id => document.getElementById(id);
+const fmt = (v, d = 2) => (v === null || v === undefined || Number.isNaN(v)) ? '-' : Number(v).toFixed(d);
+const SENSORS = ['oled', 'sht', 'body', 'ppg', 'imu', 'sd', 'mic'];
+const PAGES = ['0 Stato', '1 Temperatura', '2 PPG / BPM', '3 Inclinazione', '4 Alimentazione', '5 Bio', '6 Movimento/Suono', '7 Orologio'];
+const CSV_BIO = ['spo2', 'spo2r', 'pi', 'rrp', 'rra', 'ibi', 'rmssd', 'sdnn', 'mot', 'motion'];
+const CSV_EXT = ['steps', 'falls', 'snd', 'sndpk', 'dew', 'ah', 'hi', 'tint', 'batpct'];
+const TIME_TOL_MS = 5000;
+
+// ---------- UI di base ----------
+const TABS = [['dati', 'Dati'], ['graf', 'Grafici'], ['cmd', 'Comandi'], ['log', 'Log']];
+TABS.forEach(([id, name], i) => {
+  const b = document.createElement('button'); b.textContent = name; b.dataset.tab = id; if (!i) b.className = 'on';
+  b.onclick = () => { document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.id === 'tab-' + id));
+    if (id === 'graf') requestAnimationFrame(() => plots.forEach(p => p.draw())); };
+  $('nav').appendChild(b);
+});
+const leds = {};
+SENSORS.forEach(s => { const e = document.createElement('span'); e.className = 'led'; e.textContent = s.toUpperCase(); leds[s] = e; $('leds').appendChild(e); });
+PAGES.forEach((p, i) => { const o = document.createElement('option'); o.value = i; o.textContent = p; $('pgSel').appendChild(o); });
+
+function kvGroup(id, rows) {
+  const el = $(id), refs = {};
+  rows.forEach(([k, name]) => { const a = document.createElement('span'), b = document.createElement('span'); a.textContent = name; b.textContent = '-'; el.append(a, b); refs[k] = b; });
+  return refs;
+}
+const vals = kvGroup('g-vals', [['tamb', 'T ambiente [°C]'], ['rh', 'Umidità [%]'], ['tbody', 'T corpo [°C]'], ['bpm', 'BPM'], ['finger', 'Dito'],
+  ['ir', 'IR'], ['red', 'Red'], ['acc', 'Acc [g]'], ['gsr', 'GSR']]);
+const bio = kvGroup('g-bio', [['spo2', 'SpO2 [%]'], ['spo2r', 'SpO2 R grezzo'], ['pi', 'Perfusione PI [%]'], ['rrp', 'Respiro PPG [atti/min]'],
+  ['rra', 'Respiro acc. [atti/min]'], ['ibi', 'IBI ultimo [ms]'], ['rmssd', 'HRV RMSSD [ms]'], ['sdnn', 'HRV SDNN [ms]'], ['nibi', 'IBI accumulati'], ['mot', 'Energia movimento [g]']]);
+const ext = kvGroup('g-ext', [['gyr', 'Giroscopio [dps]'], ['steps', 'Passi'], ['falls', 'Cadute'], ['snd', 'Suono [dBFS]'], ['sndpk', 'Picco suono [dBFS]'],
+  ['dew', 'Rugiada [°C]'], ['ah', 'Umid. assoluta [g/m³]'], ['hi', 'Heat index [°C]'], ['tint', 'T interna nRF [°C]'], ['batpct', 'Batteria [%]'], ['heater', 'Riscaldatore SHT31']]);
+const pw = kvGroup('g-pw', [['vdd', 'Rail 3V3 [V]'], ['vbat', 'Pad batteria [V]'], ['usb', 'USB (VBUS)'], ['chg', 'In carica']]);
+
+function log(t) {
+  const l = $('log'); const d = new Date().toLocaleTimeString();
+  l.textContent += d + ' ' + t + '\n';
+  if (l.textContent.length > 60000) l.textContent = l.textContent.slice(-40000);
+  l.scrollTop = l.scrollHeight;
+}
+$('logClear').onclick = () => $('log').textContent = '';
+
+// ---------- grafici (canvas, senza librerie) ----------
+class Plot {
+  // series: [{name,color,axis:'l'|'r'}]
+  constructor(title, series, maxlen) {
+    this.title = title; this.series = series; this.maxlen = maxlen;
+    this.d = series.map(() => []);
+    const box = document.createElement('div'); box.className = 'plotbox';
+    this.cv = document.createElement('canvas'); box.appendChild(this.cv);
+    const b = document.createElement('button'); b.textContent = '✕'; b.title = 'Svuota grafico'; b.onclick = () => this.clear(); box.appendChild(b);
+    $('plots').appendChild(box);
+  }
+  add(vals) { vals.forEach((v, i) => { const a = this.d[i]; a.push(v === null || v === undefined || Number.isNaN(v) ? null : v); if (a.length > this.maxlen) a.shift(); }); if ($('tab-graf').classList.contains('on')) this.draw(); }
+  clear() { this.d = this.series.map(() => []); this.draw(); }
+  draw() {
+    const cv = this.cv, dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+    if (!w) return;
+    if (cv.width !== w * dpr) { cv.width = w * dpr; cv.height = h * dpr; }
+    const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, w, h);
+    const css = getComputedStyle(document.documentElement), grid = css.getPropertyValue('--grid');
+    const L = 44, R = this.series.some(s => s.axis === 'r') ? 44 : 8, T = 22, B = 8, pw_ = w - L - R, ph = h - T - B;
+    c.font = '11px system-ui'; c.fillStyle = '#cfd3da'; c.fillText(this.title, 8, 14);
+    const range = ax => { let lo = Infinity, hi = -Infinity;
+      this.series.forEach((s, i) => { if ((s.axis || 'l') === ax) this.d[i].forEach(v => { if (v !== null) { lo = Math.min(lo, v); hi = Math.max(hi, v); } }); });
+      if (!isFinite(lo)) return null; if (hi - lo < 1e-9) { lo -= 1; hi += 1; } const m = (hi - lo) * 0.08; return [lo - m, hi + m]; };
+    const rg = { l: range('l'), r: range('r') };
+    c.strokeStyle = grid; c.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) { const y = T + ph * i / 4; c.beginPath(); c.moveTo(L, y); c.lineTo(L + pw_, y); c.stroke(); }
+    ['l', 'r'].forEach(ax => { const r = rg[ax]; if (!r) return; const col = (this.series.find(s => (s.axis || 'l') === ax) || {}).color || '#ccc';
+      c.fillStyle = col; c.textAlign = ax === 'l' ? 'right' : 'left';
+      for (let i = 0; i <= 4; i++) { const v = r[1] - (r[1] - r[0]) * i / 4; c.fillText(Math.abs(v) >= 1000 ? v.toFixed(0) : v.toFixed(1), ax === 'l' ? L - 4 : L + pw_ + 4, T + ph * i / 4 + 4); } });
+    c.textAlign = 'left';
+    this.series.forEach((s, si) => { const r = rg[s.axis || 'l'], a = this.d[si]; if (!r || !a.length) return;
+      c.strokeStyle = s.color; c.lineWidth = 1.6; c.beginPath(); let pen = false;
+      a.forEach((v, i) => { if (v === null) { pen = false; return; } const x = L + pw_ * (i + (this.maxlen - a.length)) / (this.maxlen - 1), y = T + ph * (1 - (v - r[0]) / (r[1] - r[0]));
+        if (pen) c.lineTo(x, y); else { c.moveTo(x, y); pen = true; } }); c.stroke(); });
+    let lx = L + 4; this.series.forEach(s => { c.fillStyle = s.color; c.fillRect(lx, T + 4, 10, 3); c.fillStyle = '#cfd3da'; c.fillText(s.name, lx + 14, T + 9); lx += 20 + c.measureText(s.name).width; });
+  }
+}
+const plots = [];
+const mk = (t, s, n) => { const p = new Plot(t, s, n); plots.push(p); return p; };
+const pPpg = mk('PPG (IR / Red)', [{ name: 'IR', color: '#ef4444', axis: 'l' }, { name: 'Red', color: '#eab308', axis: 'r' }], 300);
+const pTemp = mk('Temperature [°C]', [{ name: 'Ambiente', color: '#22d3ee' }, { name: 'Corpo', color: '#e879f9' }], 300);
+const pBpm = mk('BPM (sx) / Umidità % (dx)', [{ name: 'BPM', color: '#22c55e', axis: 'l' }, { name: 'RH %', color: '#4f8cff', axis: 'r' }], 300);
+const pAcc = mk('Accelerometro [g]', [{ name: 'X', color: '#ef4444' }, { name: 'Y', color: '#22c55e' }, { name: 'Z', color: '#22d3ee' }], 300);
+const pSnd = mk('Suono [dBFS] (non calibrato)', [{ name: 'Medio', color: '#eab308' }, { name: 'Picco', color: '#ef4444' }], 300);
+window.addEventListener('resize', () => plots.forEach(p => p.draw()));
+
+// ---------- BLE (Nordic UART) ----------
+let dev = null, rxChar = null, txChar = null, buf = '', hbTimer = null, wq = Promise.resolve(), wakeLock = null;
+let timeChecked = false, lastMs = null, rec = null, lastBio = {}, lastExt = {};
+const enc = new TextEncoder(), dec = new TextDecoder();
+
+function setConnected(on) {
+  $('btnConn').textContent = on ? 'Disconnetti' : 'Connetti';
+  $('btnConn').className = on ? 'stop' : 'pri';
+  if (!on) SENSORS.forEach(s => leds[s].className = 'led');
+}
+async function connect() {
+  if (!navigator.bluetooth) { alert('Web Bluetooth non disponibile: apri questa pagina con Bluefy (iPhone) o Chrome/Edge (desktop/Android), via HTTPS.'); return; }
+  try {
+    dev = await navigator.bluetooth.requestDevice({ filters: [{ services: [NUS] }, { namePrefix: 'SOSPIRO' }], optionalServices: [NUS] });
+    dev.addEventListener('gattserverdisconnected', onDisc);
+    log('Connessione a ' + (dev.name || '?') + '...');
+    const srv = await dev.gatt.connect();
+    const svc = await srv.getPrimaryService(NUS);
+    rxChar = await svc.getCharacteristic(RX); txChar = await svc.getCharacteristic(TX);
+    await txChar.startNotifications();
+    txChar.addEventListener('characteristicvaluechanged', e => feed(dec.decode(e.target.value)));
+    buf = ''; setConnected(true); log('Connesso');
+    try { wakeLock = await navigator.wakeLock.request('screen'); } catch (_) {}
+    onReady();
+  } catch (e) { log('Errore connessione: ' + e.message); setConnected(false); }
+}
+function onDisc() { clearInterval(hbTimer); rxChar = null; setConnected(false); log('Disconnesso'); try { wakeLock && wakeLock.release(); } catch (_) {} }
+async function disconnect() {
+  if (rxChar) { send({ cmd: 'rec', on: 0 }, true); await new Promise(r => setTimeout(r, 400)); }
+  clearInterval(hbTimer); if (dev && dev.gatt.connected) dev.gatt.disconnect();
+}
+$('btnConn').onclick = () => (dev && dev.gatt.connected) ? disconnect() : connect();
+
+function feed(s) {
+  buf += s; let i;
+  while ((i = buf.indexOf('\n')) >= 0) {
+    const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1); if (!line) continue;
+    try { const m = JSON.parse(line); if (m && typeof m === 'object') { handle(m); continue; } } catch (_) {}
+    log('# ' + line);
+  }
+}
+function send(obj, quiet) {
+  if (!rxChar) { if (!quiet) log('Non connesso'); return; }
+  if (!quiet) log('> ' + JSON.stringify(obj));
+  const bytes = enc.encode(JSON.stringify(obj) + '\n');
+  wq = wq.then(async () => { for (let o = 0; o < bytes.length; o += 20) await rxChar.writeValueWithoutResponse(bytes.slice(o, o + 20)); })
+         .catch(e => log('Errore invio: ' + e.message));
+}
+function onReady() {
+  timeChecked = false;
+  send({ cmd: 'status' }); send({ cmd: 'gettime' });
+  clearInterval(hbTimer); hbTimer = setInterval(() => send({ cmd: 'hb' }, true), 2000);   // heartbeat
+  if (rec) send({ cmd: 'rec', on: 1 }, true);
+}
+function settime() {
+  const now = Date.now(); send({ cmd: 'settime', epoch: Math.floor(now / 1000), ms: now % 1000, tz: -new Date().getTimezoneOffset() });
+  send({ cmd: 'gettime' });
+}
+
+// ---------- messaggi dal dispositivo ----------
+function handle(m) {
+  switch (m.t) {
+    case 'data': return onData(m);
+    case 'ppg': if (m.ir != null && m.red != null) pPpg.add([m.ir, m.red]); return;
+    case 'bio': return onBio(m);
+    case 'ext': return onExt(m);
+    case 'status':
+      SENSORS.forEach(s => { if (s in m) leds[s].className = 'led ' + (m[s] ? 'ok' : 'ko'); });
+      $('fw').textContent = 'FW: ' + (m.fw ?? '-');
+      if (m.rec === 0 && rec) { log('! Il dispositivo ha spento rec (timeout): lo riaccendo'); send({ cmd: 'rec', on: 1 }, true); }
+      return log('< status ' + JSON.stringify(m));
+    case 'time':
+      $('clock').textContent = 'Ora: ' + (m.set ? String(m.iso || '').replace('T', ' ').slice(0, 19) : 'non impostata');
+      log('< time ' + JSON.stringify(m));
+      if (!timeChecked) { timeChecked = true; setTimeout(() => checkTime(m), 0); }
+      return;
+    case 'i2c': return log('< I2C: ' + (m.addrs || []).map(a => '0x' + a.toString(16).toUpperCase().padStart(2, '0')).join(', '));
+    case 'ack': if (m.cmd === 'hb') return; return log('< ack ' + m.cmd + ' ok=' + m.ok + ' ' + (m.msg || ''));
+    case 'y': case 'bpmdbg': case 'boot': return;
+    default: log('< ' + JSON.stringify(m));
+  }
+}
+function checkTime(m) {
+  let detail;
+  if (m.set && m.epoch != null) {
+    const diff = m.epoch * 1000 + (m.ms || 0) - Date.now();
+    if (Math.abs(diff) <= TIME_TOL_MS) return;
+    const a = Math.abs(diff) / 1000, d = a >= 86400 ? (diff / 86400000).toFixed(1) + ' giorni' : a >= 3600 ? (diff / 3600000).toFixed(1) + ' ore' : a >= 60 ? (diff / 60000).toFixed(1) + ' minuti' : (diff / 1000).toFixed(0) + ' secondi';
+    detail = 'Ora dispositivo: ' + String(m.iso || '').replace('T', ' ').slice(0, 19) + '\nOra del telefono: ' + new Date().toLocaleString() + '\nDifferenza: ' + d;
+  } else detail = "L'orologio del dispositivo non è impostato.";
+  if (confirm(detail + '\n\nVuoi correggere l\'ora del dispositivo con quella del telefono?')) settime();
+}
+function onData(m) {
+  if (m.epoch) $('clock').textContent = 'Ora: ' + new Date(m.epoch * 1000).toLocaleString();
+  if (m.ms != null && lastMs != null && m.ms < lastMs) log('! Il dispositivo si è riavviato (ms ripartito da 0)');
+  lastMs = m.ms;
+  const st = m.bpmst, bpmOk = !(st === 0 || st === 1 || st === 3);
+  const bpmTxt = bpmOk ? fmt(m.bpm, 0) : ({ 0: '--', 1: 'Misuro...', 3: 'Segnale debole' })[st];
+  vals.tamb.textContent = fmt(m.tamb, 1); vals.rh.textContent = fmt(m.rh, 0); vals.tbody.textContent = fmt(m.tbody);
+  vals.bpm.textContent = bpmTxt; $('bigBpm').firstChild.textContent = bpmOk && m.bpm ? fmt(m.bpm, 0) : bpmTxt;
+  vals.finger.textContent = m.finger == null ? '-' : (m.finger ? 'presente' : 'assente');
+  vals.ir.textContent = fmt(m.ir, 0); vals.red.textContent = fmt(m.red, 0); vals.gsr.textContent = fmt(m.gsr);
+  vals.acc.textContent = m.acc ? m.acc.map(a => fmt(a)).join(', ') : '-';
+  pw.vdd.textContent = fmt(m.vdd); pw.vbat.textContent = fmt(m.vbat);
+  pw.usb.textContent = m.usb == null ? '-' : (m.usb ? 'sì' : 'no'); pw.chg.textContent = m.chg == null ? '-' : (m.chg ? 'sì' : 'no');
+  pTemp.add([m.tamb, m.tbody]); pBpm.add([bpmOk ? m.bpm : null, m.rh]); pAcc.add(m.acc || [null, null, null]);
+  if (rec) { rec.rows.push([new Date().toISOString(), m.epoch, m.ms, m.tamb, m.rh, m.tbody, m.bpm, m.ir, m.red, ...(m.acc || [null, null, null]), m.vbat, m.gsr,
+    ...CSV_BIO.map(k => lastBio[k]), ...CSV_EXT.map(k => lastExt[k])].map(v => v ?? '').join(',')); $('recInfo').textContent = rec.rows.length + ' righe'; }
+}
+function onBio(m) {
+  lastBio = m;
+  const f = { spo2: 0, spo2r: 3, pi: 2, rrp: 1, rra: 1, ibi: 0, rmssd: 0, sdnn: 0, nibi: 0, mot: 3 };
+  Object.entries(f).forEach(([k, d]) => bio[k].textContent = fmt(m[k], d));
+  $('bigSpo2').firstChild.textContent = m.spo2 != null ? fmt(m.spo2, 0) : '--';
+  const el = $('motion');
+  if (m.motion == null) { el.textContent = 'Movimento: -'; el.style.background = '#888'; }
+  else if (m.motion) { el.textContent = 'MOVIMENTO: fermo! (BPM/SpO2 congelati)'; el.style.background = 'var(--bad)'; }
+  else { el.textContent = 'Fermo: ok'; el.style.background = 'var(--ok)'; }
+}
+function onExt(m) {
+  lastExt = m;
+  ext.gyr.textContent = m.gyr ? m.gyr.map(a => fmt(a, 1)).join(', ') : '-';
+  Object.entries({ steps: 0, falls: 0, snd: 1, sndpk: 1, dew: 1, ah: 1, hi: 1, tint: 1, batpct: 0 }).forEach(([k, d]) => ext[k].textContent = fmt(m[k], d));
+  ext.heater.textContent = m.heater == null ? '-' : (m.heater ? 'acceso' : 'spento');
+  if ('mic' in m) leds.mic.className = 'led ' + (m.mic ? 'ok' : 'ko');
+  pSnd.add([m.snd, m.sndpk]);
+}
+
+// ---------- comandi ----------
+$('btnStatus').onclick = () => send({ cmd: 'status' });
+$('btnI2c').onclick = () => send({ cmd: 'i2cscan' });
+$('btnSync').onclick = settime;
+$('pgSel').onchange = () => send({ cmd: 'set', key: 'page', val: +$('pgSel').value });
+const step = d => { const s = $('pgSel'); s.selectedIndex = (s.selectedIndex + d + PAGES.length) % PAGES.length; s.onchange(); };
+$('pgPrev').onclick = () => step(-1); $('pgNext').onclick = () => step(1);
+const autopage = () => send({ cmd: 'set', key: 'autopage', val: $('autoChk').checked ? +$('autoMs').value : 0 });
+$('autoChk').onchange = autopage; $('autoMs').onchange = () => $('autoChk').checked && autopage();
+const ppgRate = () => send({ cmd: 'set', key: 'ppg_rate', val: +$('ppgRate').value });
+$('ppgChk').onchange = () => { if ($('ppgChk').checked) ppgRate(); send({ cmd: 'stream', ppg: $('ppgChk').checked ? 1 : 0 }); };
+$('ppgRate').onchange = () => $('ppgChk').checked && ppgRate();
+$('agcChk').onchange = () => send({ cmd: 'set', key: 'agc', val: $('agcChk').checked ? 1 : 0 });
+$('ledSet').onclick = () => { $('agcChk').checked = false; send({ cmd: 'set', key: 'led', val: +$('ledVal').value }); };
+$('micChk').onchange = () => send({ cmd: 'set', key: 'mic', val: $('micChk').checked ? 1 : 0 });
+$('heatChk').onchange = () => send({ cmd: 'set', key: 'sht_heater', val: $('heatChk').checked ? 1 : 0 });
+$('motSet').onclick = () => send({ cmd: 'set', key: 'motmax', val: +$('motVal').value });
+$('rateSet').onclick = () => send({ cmd: 'set', key: 'rate_ms', val: +$('rateVal').value });
+$('stepsReset').onclick = () => send({ cmd: 'set', key: 'steps_reset', val: 1 });
+
+// ---------- registrazione CSV ----------
+$('btnRec').onclick = () => {
+  if (!rec) {
+    rec = { rows: [['pc_time', 'epoch', 'ms', 'tamb', 'rh', 'tbody', 'bpm', 'ir', 'red', 'ax', 'ay', 'az', 'vbat', 'gsr', ...CSV_BIO, ...CSV_EXT].join(',')] };
+    $('btnRec').textContent = 'Ferma e scarica'; $('btnRec').className = 'stop'; send({ cmd: 'rec', on: 1 }); log('Registrazione avviata');
+  } else {
+    const blob = new Blob([rec.rows.join('\n')], { type: 'text/csv' }), a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'sospiro_' + new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14) + '.csv'; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    log('Registrazione fermata (' + (rec.rows.length - 1) + ' righe)'); rec = null;
+    $('btnRec').textContent = 'Registra CSV'; $('btnRec').className = ''; $('recInfo').textContent = ''; send({ cmd: 'rec', on: 0 });
+  }
+};
+document.addEventListener('visibilitychange', async () => { if (document.visibilityState === 'visible' && dev && dev.gatt.connected) { try { wakeLock = await navigator.wakeLock.request('screen'); } catch (_) {} } });
+plots.forEach(p => p.draw());
+</script>
+</body>
+</html>
